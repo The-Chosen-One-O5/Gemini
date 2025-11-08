@@ -107,7 +107,7 @@ export function AuthPage() {
     }
 
     if (!hasRequiredCookieTokens(rawCookies)) {
-      setValidationMessage('The cookie string looks incomplete. Make sure __Secure-1PSID and __Secure-1PSIDTS are included.');
+      setValidationMessage('Please paste valid Gemini cookies from gemini.google.com. Cookies should include PSID, NID, or __Secure-* tokens.');
       setValidationState('error');
       return;
     }
@@ -250,7 +250,7 @@ export function AuthPage() {
                   id="cookies"
                   value={cookieInput}
                   onChange={handleCookieChange}
-                  placeholder="SID=...; __Secure-1PSID=...; __Secure-1PSIDTS=..."
+                  placeholder="Paste all cookies from gemini.google.com (from DevTools → Application → Cookies)"
                   className="mt-2 w-full min-h-[200px] resize-none rounded-2xl border border-white/10 bg-[#0f1421] text-gray-100 placeholder:text-gray-500 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500/70"
                   spellCheck={false}
                   disabled={isValidating}

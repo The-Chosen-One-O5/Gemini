@@ -41,8 +41,15 @@ export function getCookieValue(cookieString: string, name: string): string | nul
 
 export function hasRequiredCookieTokens(cookieString: string): boolean {
   const cleaned = sanitizeCookieString(cookieString);
-  const tokens = ['__Secure-1PSID', '__Secure-1PSIDTS'];
-  return tokens.every((token) => cleaned.includes(`${token}=`));
+  
+  // Check for ANY Gemini-related cookies (not specific to __Secure-1PSIDTS)
+  // Valid patterns: __Secure-1PSID, __Secure-3PSID, NID, etc.
+  const hasGeminiCookie = cleaned.includes('PSID') || 
+                          cleaned.includes('NID') || 
+                          cleaned.includes('__Secure') ||
+                          cleaned.includes('SAPISID');
+  
+  return hasGeminiCookie;
 }
 
 export function encryptCookieString(cookieString: string): string {
