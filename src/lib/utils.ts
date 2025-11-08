@@ -122,16 +122,3 @@ export function parseReminderPatterns(text: string): Array<{
   return reminders;
 }
 
-export function encryptApiKey(apiKey: string): string {
-  // Simple obfuscation for localStorage (not true encryption)
-  // In production, use proper encryption
-  return btoa(apiKey);
-}
-
-export function decryptApiKey(encryptedKey: string): string {
-  try {
-    return atob(encryptedKey);
-  } catch {
-    return '';
-  }
-}

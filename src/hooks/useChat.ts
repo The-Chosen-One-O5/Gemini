@@ -1,12 +1,16 @@
 import { useCallback, useRef } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { parseReminderPatterns } from '@/lib/utils';
+import { ChatRequestOptions, Message } from '@/types';
 
 export function useChat() {
   const {
-    apiKey,
+    cookies,
+    cookieStatus,
+    shouldRefreshCookies,
+    markCookiesValidated,
+    setCookieStatus,
     currentConversationId,
-    conversations,
     isLoading,
     setLoading,
     setError,
@@ -16,125 +20,199 @@ export function useChat() {
     addReminder,
   } = useChatStore();
 
+  const currentConversation = useChatStore((state) =>
+    state.currentConversationId
+      ? state.conversations.find((conversation) => conversation.id === state.currentConversationId) ?? null
+      : null
+  );
+
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const getCurrentConversation = useCallback(() => {
-    if (!currentConversationId) return null;
-    return conversations.find((conv) => conv.id === currentConversationId);
-  }, [currentConversationId, conversations]);
+  const getConversationById = useCallback((conversationId: string | null) => {
+    if (!conversationId) return null;
+    const state = useChatStore.getState();
+    return state.conversations.find((conversation) => conversation.id === conversationId) ?? null;
+  }, []);
 
-  const sendMessage = useCallback(async (content: string) => {
-    if (!apiKey) {
-      setError('Please set your API key first');
-      return;
-    }
+  const buildHistoryPayload = useCallback((conversationId: string) => {
+    const conversation = getConversationById(conversationId);
+    if (!conversation) return [] as Message[];
 
-    let conversationId = currentConversationId;
-    
-    // Create new conversation if none exists
-    if (!conversationId) {
-      conversationId = createConversation();
-    }
+    const sanitized = conversation.messages
+      .filter((message) => !(message.role === 'assistant' && message.isStreaming))
+      .map((message) => ({ ...message }));
 
-    // Add user message
-    addMessage(conversationId, {
-      content,
-      role: 'user',
-    });
-
-    // Parse for reminder patterns
-    const reminderPatterns = parseReminderPatterns(content);
-    reminderPatterns.forEach((pattern) => {
-      addReminder({
-        type: pattern.type,
-        value: pattern.value,
-        message: pattern.message,
-        context: pattern.context,
-        isActive: true,
-      });
-    });
-
-    // Add assistant message placeholder
-    addMessage(conversationId, {
-      content: '',
-      role: 'assistant',
-      isStreaming: true,
-    });
-
-    setLoading(true);
-    setError(null);
-
-    // Cancel any ongoing request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-
-    abortControllerRef.current = new AbortController();
-
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          message: content,
-          conversationHistory: getCurrentConversation()?.messages || [],
-        }),
-        signal: abortControllerRef.current.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to send message');
+    if (sanitized.length > 0) {
+      const lastMessage = sanitized[sanitized.length - 1];
+      if (lastMessage.role === 'user') {
+        sanitized.pop();
       }
+    }
 
-      const data = await response.json();
+    return sanitized;
+  }, [getConversationById]);
 
-      // Update the assistant message with the response
-      const currentConv = conversations.find((conv) => conv.id === conversationId);
-      if (currentConv) {
-        const lastMessage = currentConv.messages[currentConv.messages.length - 1];
-        updateMessage(conversationId, lastMessage.id, {
-          content: data.response,
-          isStreaming: false,
-        });
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        // Request was aborted, don't show error
+  const sendMessage = useCallback(
+    async (content: string, options: ChatRequestOptions = {}) => {
+      const trimmed = content.trim();
+      if (!trimmed) {
         return;
       }
 
-      const errorMessage = error instanceof Error ? error.message : 'Failed to send message';
-      setError(errorMessage);
+      if (!cookies) {
+        setError('Please paste your Gemini cookies to start chatting.');
+        return;
+      }
 
-      // Update the assistant message with error
-      const currentConv = conversations.find((conv) => conv.id === conversationId);
-      if (currentConv) {
-        const lastMessage = currentConv.messages[currentConv.messages.length - 1];
-        updateMessage(conversationId, lastMessage.id, {
-          content: `Error: ${errorMessage}`,
-          isStreaming: false,
+      if (cookieStatus === 'invalid') {
+        setError('Your Gemini cookies are invalid. Please refresh them from gemini.google.com.');
+        return;
+      }
+
+      if (cookieStatus === 'expired' || shouldRefreshCookies()) {
+        setCookieStatus('expired');
+        setError('Your Gemini cookies look expired. Please refresh them from gemini.google.com.');
+        return;
+      }
+
+      let conversationId = currentConversationId;
+      if (!conversationId) {
+        conversationId = createConversation();
+      }
+
+      const origin = options.origin ?? 'chat';
+
+      addMessage(conversationId, {
+        content: trimmed,
+        role: 'user',
+        origin: origin === 'reminder' ? 'reminder' : 'user',
+      });
+
+      if (!options.skipReminderParsing) {
+        const reminderPatterns = parseReminderPatterns(trimmed);
+        reminderPatterns.forEach((pattern) => {
+          addReminder({
+            type: pattern.type,
+            value: pattern.value,
+            message: pattern.message,
+            context: pattern.context,
+            isActive: true,
+          });
         });
       }
-    } finally {
-      setLoading(false);
-      abortControllerRef.current = null;
-    }
-  }, [
-    apiKey,
-    currentConversationId,
-    conversations,
-    addMessage,
-    updateMessage,
-    createConversation,
-    addReminder,
-    setLoading,
-    setError,
-    getCurrentConversation,
-  ]);
+
+      addMessage(conversationId, {
+        content: '',
+        role: 'assistant',
+        isStreaming: true,
+      });
+
+      setLoading(true);
+      setError(null);
+
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      try {
+        const historyForRequest = buildHistoryPayload(conversationId);
+
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: trimmed,
+            conversationHistory: historyForRequest,
+            cookies,
+            options: {
+              origin,
+            },
+          }),
+          signal: controller.signal,
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok || !data?.success) {
+          const errorMessage =
+            data?.error ||
+            (response.status === 401 || response.status === 403
+              ? 'Cookies expired or invalid. Please refresh them from gemini.google.com.'
+              : response.status === 429
+              ? 'Too many requests. Please try again later.'
+              : 'Failed to send message. Please try again.');
+
+          if (response.status === 401 || response.status === 403) {
+            setCookieStatus('invalid');
+          }
+
+          setError(errorMessage);
+
+          const latestConversation = getConversationById(conversationId);
+          const lastMessage = latestConversation?.messages.at(-1);
+          if (lastMessage) {
+            updateMessage(conversationId, lastMessage.id, {
+              content: `Error: ${errorMessage}`,
+              isStreaming: false,
+            });
+          }
+
+          return;
+        }
+
+        const latestConversation = getConversationById(conversationId);
+        const lastMessage = latestConversation?.messages.at(-1);
+        if (lastMessage) {
+          updateMessage(conversationId, lastMessage.id, {
+            content: data.response,
+            isStreaming: false,
+          });
+        }
+
+        markCookiesValidated();
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to send message. Please try again.';
+        setError(errorMessage);
+
+        const latestConversation = getConversationById(conversationId);
+        const lastMessage = latestConversation?.messages.at(-1);
+        if (lastMessage) {
+          updateMessage(conversationId, lastMessage.id, {
+            content: `Error: ${errorMessage}`,
+            isStreaming: false,
+          });
+        }
+      } finally {
+        setLoading(false);
+        abortControllerRef.current = null;
+      }
+    },
+    [
+      addMessage,
+      addReminder,
+      buildHistoryPayload,
+      cookies,
+      cookieStatus,
+      createConversation,
+      currentConversationId,
+      markCookiesValidated,
+      setCookieStatus,
+      setError,
+      setLoading,
+      shouldRefreshCookies,
+      updateMessage,
+    ]
+  );
 
   const stopStreaming = useCallback(() => {
     if (abortControllerRef.current) {
@@ -147,7 +225,7 @@ export function useChat() {
   return {
     sendMessage,
     stopStreaming,
-    currentConversation: getCurrentConversation(),
+    currentConversation,
     isLoading,
   };
 }

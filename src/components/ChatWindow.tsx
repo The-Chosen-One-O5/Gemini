@@ -66,11 +66,11 @@ export function ChatWindow() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex items-center justify-between p-4 border-b border-[#e5e7eb] dark:border-[#323547] bg-[#ffffff] dark:bg-[#1f2231]">
         <div className="flex items-center gap-3">
           <button
             onClick={handleNewChat}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-xl bg-[#e0e7ff] text-[#1e3a8a] hover:bg-[#cbd5ff] dark:bg-[#3b82f6]/20 dark:text-[#93c5fd] dark:hover:bg-[#3b82f6]/30 transition-colors"
           >
             <Plus className="w-4 h-4" />
             New Chat
@@ -81,11 +81,11 @@ export function ChatWindow() {
             </h2>
           )}
         </div>
-        
+
         {isLoading && (
           <button
             onClick={stopStreaming}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 rounded-lg transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-xl bg-rose-500/15 text-rose-500 dark:text-rose-300 hover:bg-rose-500/25 transition-colors"
           >
             <Square className="w-4 h-4" />
             Stop
@@ -94,7 +94,7 @@ export function ChatWindow() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto bg-[#f8fafc] dark:bg-[#151723]">
         {!hasMessages ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4">
             <div className="max-w-md">
@@ -104,21 +104,21 @@ export function ChatWindow() {
               <p className="text-gray-600 dark:text-gray-400 mb-6">
                 Start a conversation with Google&apos;s Gemini 2.0 Flash. Ask questions, get help with coding, explore ideas, and more.
               </p>
-              
+
               <div className="grid grid-cols-1 gap-2 text-sm">
-                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-left">
+                <div className="p-3 rounded-xl bg-white/80 dark:bg-[#1f2333] border border-white/50 dark:border-[#2f3244] text-left">
                   <span className="font-medium text-gray-700 dark:text-gray-300">💡 Try:</span>
                   <p className="text-gray-600 dark:text-gray-400 mt-1">
                     &quot;Explain quantum computing in simple terms&quot;
                   </p>
                 </div>
-                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-left">
+                <div className="p-3 rounded-xl bg-white/80 dark:bg-[#1f2333] border border-white/50 dark:border-[#2f3244] text-left">
                   <span className="font-medium text-gray-700 dark:text-gray-300">🔧 Try:</span>
                   <p className="text-gray-600 dark:text-gray-400 mt-1">
                     &quot;Help me write a Python function to sort a list&quot;
                   </p>
                 </div>
-                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-left">
+                <div className="p-3 rounded-xl bg-white/80 dark:bg-[#1f2333] border border-white/50 dark:border-[#2f3244] text-left">
                   <span className="font-medium text-gray-700 dark:text-gray-300">⏰ Try:</span>
                   <p className="text-gray-600 dark:text-gray-400 mt-1">
                     &quot;Remind me in 5 minutes to take a break&quot;
@@ -142,7 +142,7 @@ export function ChatWindow() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+      <div className="border-t border-[#e5e7eb] dark:border-[#2f3244] bg-[#ffffff] dark:bg-[#1f2231] p-4">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
           <div className="flex gap-3">
             <div className="flex-1 relative">
@@ -156,11 +156,11 @@ export function ChatWindow() {
                 placeholder="Type your message..."
                 className={cn(
                   'w-full px-4 py-3 pr-12 resize-none',
-                  'bg-gray-100 dark:bg-gray-700',
+                  'bg-[#f3f4f6] dark:bg-[#25283a]',
                   'text-gray-900 dark:text-gray-100',
                   'placeholder-gray-500 dark:placeholder-gray-400',
-                  'border border-gray-300 dark:border-gray-600 rounded-2xl',
-                  'focus:outline-none focus:ring-2 focus:ring-blue-500',
+                  'border border-[#d1d5db] dark:border-[#3a3e53] rounded-2xl',
+                  'focus:outline-none focus:ring-2 focus:ring-[#3b82f6]',
                   'focus:border-transparent',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
                   'min-h-[48px] max-h-[120px]'
@@ -169,17 +169,17 @@ export function ChatWindow() {
                 rows={1}
               />
             </div>
-            
+
             <button
               type="submit"
               disabled={!input.trim() || isLoading || isComposing}
               className={cn(
                 'px-4 py-3 rounded-2xl transition-all duration-200',
-                'focus:outline-none focus:ring-2 focus:ring-blue-500',
+                'focus:outline-none focus:ring-2 focus:ring-[#3b82f6]',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 input.trim() && !isLoading && !isComposing
-                  ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
-                  : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500'
+                  ? 'bg-[#3b82f6] hover:bg-[#2563eb] text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 transform hover:scale-105'
+                  : 'bg-[#e5e7eb] dark:bg-[#303349] text-gray-500 dark:text-gray-400'
               )}
             >
               <Send className="w-5 h-5" />

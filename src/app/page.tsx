@@ -9,11 +9,7 @@ export default function Home() {
   const { isAuthenticated } = useChatStore();
 
   if (!isAuthenticated) {
-    return (
-      <Layout>
-        <AuthPage />
-      </Layout>
-    );
+    return <AuthPage />;
   }
 
   return (

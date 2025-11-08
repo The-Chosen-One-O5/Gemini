@@ -5,7 +5,7 @@ A production-ready web chatbot built with Next.js 15, TypeScript, and Google's G
 ## Features
 
 ### Core Features
-- ✅ **Google AI Studio Authentication** - Secure API key management with local storage
+- ✅ **Cookie-Based Authentication** - Securely store encrypted Gemini session cookies locally
 - ✅ **Real-time Chat** - Conversations with Gemini 2.0 Flash AI
 - ✅ **Chat History** - Persistent conversation storage with sidebar navigation
 - ✅ **Dark/Light Themes** - Beautiful theme system with smooth transitions
@@ -31,7 +31,7 @@ A production-ready web chatbot built with Next.js 15, TypeScript, and Google's G
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **State Management**: Zustand with persistence
-- **AI Integration**: Google Generative AI SDK
+- **AI Integration**: Gemini web endpoints proxied with session cookies (SAPISIDHASH)
 - **Markdown**: react-markdown with syntax highlighting
 - **Icons**: Lucide React
 - **Deployment**: Vercel-ready
@@ -40,7 +40,7 @@ A production-ready web chatbot built with Next.js 15, TypeScript, and Google's G
 
 ### Prerequisites
 - Node.js 18+ 
-- Google AI Studio API key
+- Google account with access to gemini.google.com
 
 ### Installation
 
@@ -62,13 +62,14 @@ npm run dev
 
 4. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### Getting Your API Key
+### Capturing Your Gemini Cookies
 
-1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Sign in with your Google account
-3. Click "Create API Key"
-4. Copy your API key (starts with "AIza")
-5. Enter it in the authentication screen
+1. Visit [https://gemini.google.com](https://gemini.google.com) and sign in
+2. Open DevTools (`F12` or `Cmd+Opt+I`)
+3. Navigate to the **Application** tab
+4. Expand **Cookies** and select **https://gemini.google.com**
+5. Select all cookie rows and copy them (`Cmd/Ctrl + C`)
+6. Paste the cookie string into the Gemini Chat landing page
 
 ## Project Structure
 
@@ -105,14 +106,14 @@ src/
 ### Chat API
 - **Endpoint**: `/api/chat`
 - **Method**: POST
-- **Headers**: `x-api-key: YOUR_API_KEY`
-- **Body**: `{ message: string, conversationHistory: Message[] }`
+- **Body**: `{ message: string, conversationHistory: Message[], cookies: string }`
+- The server proxies requests to Gemini using the provided cookies and a computed `SAPISIDHASH` header.
 
 ### TTS API
 - **Endpoint**: `/api/tts`
 - **Method**: POST
-- **Headers**: `x-api-key: YOUR_API_KEY`
-- **Body**: `{ text: string }`
+- **Body**: `{ text: string, cookies: string }`
+- Returns a `data:` URL containing the generated audio when available.
 
 ## Deployment
 
@@ -127,7 +128,7 @@ The app is designed to work out-of-the-box with Vercel's serverless functions.
 
 ### Environment Variables
 
-The app doesn't require any environment variables for basic functionality. The API key is managed client-side for simplicity.
+The app doesn't require any environment variables for basic functionality. Gemini session cookies are stored encrypted in the browser and proxied to the Gemini web API via the Next.js server routes.
 
 ## Features in Detail
 

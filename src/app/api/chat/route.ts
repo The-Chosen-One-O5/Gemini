@@ -1,84 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ChatRequest, ChatResponse } from '@/types';
+import { ChatRequest, ChatResponse, Message } from '@/types';
+import { sendGeminiChatRequest, CookieValidationError } from '@/server/geminiClient';
+
+function normalizeHistory(history: Message[] = []): Message[] {
+  return history
+    .filter((message) => typeof message?.content === 'string' && !!message.content)
+    .map((message) => ({
+      ...message,
+      timestamp: new Date(message.timestamp ?? Date.now()),
+    }));
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const body: ChatRequest = await request.json();
-    const { message, conversationHistory } = body;
+    const body = (await request.json()) as ChatRequest;
+    const { message, conversationHistory = [], cookies } = body;
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json(
-        { error: 'Message is required and must be a string' },
+        { error: 'Message is required and must be a string', success: false },
         { status: 400 }
       );
     }
 
-    // Get API key from request headers (sent from client)
-    const apiKey = request.headers.get('x-api-key');
-    if (!apiKey) {
+    if (!cookies || typeof cookies !== 'string') {
       return NextResponse.json(
-        { error: 'API key is required' },
+        { error: 'Cookies are required to authenticate with Gemini', success: false },
         { status: 401 }
       );
     }
 
-    // Initialize Gemini
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const normalizedHistory = normalizeHistory(conversationHistory);
 
-    // Convert conversation history to Gemini format
-    const history = conversationHistory.map((msg) => ({
-      role: msg.role === 'user' ? 'user' : 'model',
-      parts: [{ text: msg.content }],
-    }));
-
-    // Start chat with history
-    const chat = model.startChat({
-      history,
-      generationConfig: {
-        maxOutputTokens: 8192,
-        temperature: 0.7,
-      },
+    const geminiResponse = await sendGeminiChatRequest({
+      cookies,
+      message,
+      conversationHistory: normalizedHistory,
     });
 
-    // Send message
-    const result = await chat.sendMessage(message);
-    const response = await result.response;
-    const text = response.text();
-
     const chatResponse: ChatResponse = {
-      response: text,
+      response: geminiResponse.text || 'Gemini did not return a response.',
+      success: true,
     };
 
     return NextResponse.json(chatResponse);
   } catch (error) {
-    console.error('Chat API error:', error);
-    
-    // Handle specific Gemini API errors
+    console.error('Chat API error:', error instanceof Error ? error.message : error);
+
+    if (error instanceof CookieValidationError) {
+      return NextResponse.json(
+        { error: error.message, success: false },
+        { status: 401 }
+      );
+    }
+
     if (error instanceof Error) {
-      if (error.message.includes('API_KEY_INVALID')) {
+      if (error.message.includes('Too many requests')) {
         return NextResponse.json(
-          { error: 'Invalid API key. Please check your Google AI Studio API key.' },
-          { status: 401 }
-        );
-      }
-      if (error.message.includes('RATE_LIMIT_EXCEEDED')) {
-        return NextResponse.json(
-          { error: 'Rate limit exceeded. Please wait a moment before trying again.' },
-          { status: 429 }
-        );
-      }
-      if (error.message.includes('QUOTA_EXCEEDED')) {
-        return NextResponse.json(
-          { error: 'API quota exceeded. Please check your Google AI Studio usage.' },
+          { error: 'Too many requests. Please try again later.', success: false },
           { status: 429 }
         );
       }
     }
 
     return NextResponse.json(
-      { error: 'An unexpected error occurred. Please try again.' },
+      { error: 'An unexpected error occurred. Please try again.', success: false },
       { status: 500 }
     );
   }
