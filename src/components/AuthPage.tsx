@@ -132,25 +132,27 @@ export function AuthPage() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok || !data?.valid) {
-        const errorMessage =
-          data?.message ||
-          (response.status === 401
-            ? 'Cookies expired or invalid. Please refresh them from gemini.google.com.'
-            : 'Failed to validate cookies. Please try again.');
+        console.error('❌ API Error:', data);
+        
+        // Show detailed error to user
+        const errorMsg = data?.details || data?.error || data?.message || 'Unknown error';
+        const fullErrorMessage = `❌ Error: ${errorMsg}\n\nMake sure you copied the entire cookie string from gemini.google.com`;
 
         setCookieStatus('invalid');
-        setValidationMessage(errorMessage);
+        setValidationMessage(fullErrorMessage);
         setValidationState('error');
         return;
       }
 
+      console.log('✅ Cookies validated:', data);
       setCookies(sanitized, { validated: true });
       setValidationMessage('Cookies saved securely. Redirecting to chat...');
       setValidationState('success');
       validated = true;
     } catch (error) {
+      console.error('❌ Network error:', error);
       const message = error instanceof Error ? error.message : 'Failed to validate cookies. Please try again.';
-      setValidationMessage(message);
+      setValidationMessage(`❌ Network Error: ${message}\n\nPlease check your connection and try again.`);
       setValidationState('error');
     } finally {
       setIsValidating(false);

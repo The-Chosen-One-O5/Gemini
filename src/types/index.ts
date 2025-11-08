@@ -82,4 +82,8 @@ export interface CookieValidationRequest {
 export interface CookieValidationResponse {
   valid: boolean;
   message?: string;
+  error?: string;
+  details?: string;
+  received?: string;
+  cookieLength?: number;
 }
