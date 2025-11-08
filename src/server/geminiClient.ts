@@ -55,7 +55,7 @@ function assertRequiredCookies(cookies: string) {
   }
 
   if (!hasRequiredCookieTokens(cookies)) {
-    throw new CookieValidationError('Cookie string is missing required Gemini tokens. Ensure __Secure-1PSID and __Secure-1PSIDTS are included.');
+    throw new CookieValidationError('Please paste valid Gemini cookies from gemini.google.com. Cookies should include PSID, NID, or __Secure-* tokens.');
   }
 }
 
