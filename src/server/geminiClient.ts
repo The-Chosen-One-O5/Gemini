@@ -51,15 +51,20 @@ class CookieValidationError extends Error {
 
 function assertRequiredCookies(cookies: string) {
   if (!cookies || !cookies.trim()) {
+    console.error('❌ Cookie validation failed: Empty cookie string');
     throw new CookieValidationError('Missing cookie string. Please paste your Gemini session cookies.');
   }
 
   if (!hasRequiredCookieTokens(cookies)) {
+    console.error('❌ Cookie validation failed: Missing required cookie tokens');
     throw new CookieValidationError('Please paste valid Gemini cookies from gemini.google.com. Cookies should include PSID, NID, or __Secure-* tokens.');
   }
+
+  console.log('✅ Cookie validation passed');
 }
 
 function createSapSidHash(cookies: string): string {
+  console.log('🔐 Creating SAPISIDHASH...');
   const sanitized = sanitizeCookieString(cookies);
   const sapisid =
     getCookieValue(sanitized, 'SAPISID') ||
@@ -67,12 +72,15 @@ function createSapSidHash(cookies: string): string {
     getCookieValue(sanitized, '__Secure-1PSID');
 
   if (!sapisid) {
+    console.error('❌ SAPISID not found in cookies');
     throw new CookieValidationError('Required cookie SAPISID/__Secure-1PSID not found. Please ensure you copied all cookies.');
   }
 
+  console.log('✅ Found SAPISID cookie, generating hash');
   const timestamp = Math.floor(Date.now() / 1000);
   const hashData = `${timestamp} ${sapisid} ${GEMINI_ORIGIN}`;
   const hash = crypto.createHash('sha1').update(hashData).digest('hex');
+  console.log('✅ SAPISIDHASH generated successfully');
   return `${timestamp}_${hash}`;
 }
 
@@ -161,31 +169,48 @@ function parseGeminiAudio(data: any): { audioBase64: string | null; mimeType: st
 }
 
 async function performGeminiRequest({ cookies, payload, endpoint = GEMINI_CHAT_ENDPOINT }: GeminiRequestOptions) {
+  console.log('📡 performGeminiRequest called');
+  console.log('🔗 Endpoint:', endpoint);
+
   assertRequiredCookies(cookies);
 
+  console.log('📤 Sending POST request to Gemini API...');
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: buildHeaders(cookies),
     body: JSON.stringify(payload),
   });
 
+  console.log('📨 Response status:', response.status);
+
   if (response.status === 401 || response.status === 403) {
+    console.error('❌ Authentication failed: Status', response.status);
     throw new CookieValidationError('Cookies expired or invalid. Please refresh them from gemini.google.com.');
   }
 
   if (response.status === 429) {
+    console.error('⏱️ Rate limited: Status 429');
     throw new Error('Too many requests. Please try again later.');
   }
 
   if (!response.ok) {
     const text = await response.text();
+    console.error('❌ Gemini request failed with status:', response.status);
+    console.error('Response body:', text?.substring(0, 500) || '(empty)');
     throw new Error(`Gemini request failed (${response.status}): ${text}`);
   }
 
-  return response.json();
+  console.log('✅ Gemini API returned OK status');
+  const json = await response.json();
+  console.log('✅ Response parsed as JSON successfully');
+  return json;
 }
 
 export async function sendGeminiChatRequest({ cookies, message, conversationHistory }: GeminiChatRequest): Promise<GeminiChatResponse> {
+  console.log('💬 sendGeminiChatRequest called');
+  console.log('📝 Message:', message?.substring(0, 50) || '(empty)');
+  console.log('📚 History:', conversationHistory?.length || 0, 'messages');
+
   const payload = {
     contents: buildContents(conversationHistory, message),
     generationConfig: {
@@ -196,9 +221,16 @@ export async function sendGeminiChatRequest({ cookies, message, conversationHist
     },
   };
 
+  console.log('📦 Payload prepared with', payload.contents?.length || 0, 'contents');
+
   const data = await performGeminiRequest({ cookies, payload, endpoint: GEMINI_CHAT_ENDPOINT });
+
+  console.log('🔍 Parsing Gemini response...');
+  const text = parseGeminiText(data);
+  console.log('✅ Parsed text:', text?.substring(0, 50) || '(empty)');
+
   return {
-    text: parseGeminiText(data),
+    text,
     raw: data,
   };
 }
