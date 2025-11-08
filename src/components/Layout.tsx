@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, LogOut, Bot } from 'lucide-react';
+import { Menu, X, LogOut, Bot, AlertTriangle } from 'lucide-react';
 import { useChatStore } from '@/stores/chatStore';
 import { ThemeToggle } from './ThemeToggle';
 import { Sidebar } from './Sidebar';
@@ -10,12 +10,14 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
-  const { logout } = useChatStore();
+  const { logout, cookieStatus, shouldRefreshCookies } = useChatStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const needsCookieRefresh =
+    cookieStatus === 'expired' || (cookieStatus === 'valid' && shouldRefreshCookies());
+
   return (
-    <div className="flex h-screen bg-gray-100 dark:bg-gray-950">
-      {/* Mobile Sidebar Overlay */}
+    <div className="flex h-screen bg-[#f3f4f6] dark:bg-[#1a1a1a] text-gray-900 dark:text-gray-100">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -23,7 +25,6 @@ export function Layout({ children }: LayoutProps) {
         />
       )}
 
-      {/* Sidebar */}
       <div
         className={cn(
           'fixed lg:relative inset-y-0 left-0 z-50 w-80 transform transition-transform duration-200 ease-in-out lg:transform-none',
@@ -33,41 +34,45 @@ export function Layout({ children }: LayoutProps) {
         <Sidebar onClose={() => setSidebarOpen(false)} />
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {/* Mobile Menu Toggle */}
+        <header className="bg-[#ffffff] dark:bg-[#2d2d2d] border-b border-[#e5e7eb] dark:border-[#3f3f46] px-4 py-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-center justify-between xl:justify-start xl:gap-4">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="p-2 rounded-lg lg:hidden hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="p-2 rounded-xl xl:hidden bg-[#f5f5f5] dark:bg-[#1f1f1f] hover:bg-[#ebebeb] dark:hover:bg-[#272727] transition-colors"
               >
                 {sidebarOpen ? (
-                  <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                  <X className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                 ) : (
-                  <Menu className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                  <Menu className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                 )}
               </button>
 
-              {/* Logo */}
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
                   <Bot className="w-5 h-5 text-white" />
                 </div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                  Gemini Chat
-                </h1>
+                <div>
+                  <h1 className="text-xl font-bold">Gemini Chat</h1>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
+                    Private, cookie-authenticated Gemini conversations.
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Header Actions */}
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
+            <div className="flex flex-wrap items-center gap-2 justify-end">
+              {needsCookieRefresh && (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-200">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>Refresh Gemini cookies</span>
+                </div>
+              )}
+              <ThemeToggle className="bg-[#f5f5f5] dark:bg-[#1f1f1f]" />
               <button
                 onClick={logout}
-                className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-700 dark:text-gray-300"
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-xl bg-[#0f172a] dark:bg-[#3b82f6] text-white hover:bg-[#1d2a44] dark:hover:bg-[#2563eb] transition-colors"
               >
                 <LogOut className="w-4 h-4" />
                 <span className="hidden sm:inline">Logout</span>
@@ -76,8 +81,7 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </header>
 
-        {/* Main Content Area */}
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden bg-[#ffffff] dark:bg-[#20212a]">
           {children}
         </main>
       </div>

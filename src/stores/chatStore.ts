@@ -1,12 +1,32 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ChatState, Conversation, Message, Reminder } from '@/types';
+import {
+  ChatState,
+  Conversation,
+  Message,
+  Reminder,
+  CookieStatus,
+} from '@/types';
+import {
+  encryptCookieString,
+  decryptCookieString,
+  sanitizeCookieString,
+  areCookiesStale,
+} from '@/lib/cookieUtils';
+
+interface SetCookiesOptions {
+  validated?: boolean;
+}
 
 interface ChatStore extends ChatState {
   // Authentication
-  setApiKey: (apiKey: string) => void;
+  setCookies: (cookieString: string, options?: SetCookiesOptions) => void;
+  refreshDecryptedCookies: () => void;
+  setCookieStatus: (status: CookieStatus) => void;
+  markCookiesValidated: () => void;
+  shouldRefreshCookies: () => boolean;
   logout: () => void;
-  
+
   // Conversations
   createConversation: () => string;
   setCurrentConversation: (id: string | null) => void;
@@ -14,23 +34,46 @@ interface ChatStore extends ChatState {
   updateMessage: (conversationId: string, messageId: string, updates: Partial<Message>) => void;
   deleteConversation: (id: string) => void;
   updateConversationTitle: (id: string, title: string) => void;
-  
+
   // UI State
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  clearError: () => void;
   setTheme: (theme: 'dark' | 'light') => void;
-  
+
   // Reminders
   addReminder: (reminder: Omit<Reminder, 'id' | 'createdAt'>) => void;
   updateReminder: (id: string, updates: Partial<Reminder>) => void;
   deleteReminder: (id: string) => void;
 }
 
+function normalizeConversationDates(conversations: Conversation[]): Conversation[] {
+  return conversations.map((conversation) => ({
+    ...conversation,
+    createdAt: new Date(conversation.createdAt),
+    updatedAt: new Date(conversation.updatedAt),
+    messages: conversation.messages.map((message) => ({
+      ...message,
+      timestamp: new Date(message.timestamp),
+    })),
+  }));
+}
+
+function normalizeReminderDates(reminders: Reminder[]): Reminder[] {
+  return reminders.map((reminder) => ({
+    ...reminder,
+    createdAt: new Date(reminder.createdAt),
+  }));
+}
+
 export const useChatStore = create<ChatStore>()(
   persist(
-    (set) => ({
-      // Initial state
-      apiKey: null,
+    (set, get) => ({
+      cookies: null,
+      encryptedCookies: null,
+      cookiesSetAt: null,
+      lastValidatedAt: null,
+      cookieStatus: null,
       isAuthenticated: false,
       currentConversationId: null,
       conversations: [],
@@ -39,37 +82,101 @@ export const useChatStore = create<ChatStore>()(
       reminders: [],
       theme: 'dark',
 
-      // Authentication
-      setApiKey: (apiKey: string) => {
-        set({ apiKey, isAuthenticated: true });
-      },
+      setCookies: (cookieString: string, options?: SetCookiesOptions) => {
+        const sanitized = sanitizeCookieString(cookieString);
+        const encrypted = encryptCookieString(sanitized);
+        const timestamp = new Date().toISOString();
 
-      logout: () => {
         set({
-          apiKey: null,
-          isAuthenticated: false,
-          currentConversationId: null,
+          cookies: sanitized,
+          encryptedCookies: encrypted,
+          cookiesSetAt: timestamp,
+          lastValidatedAt: options?.validated ? timestamp : get().lastValidatedAt,
+          cookieStatus: options?.validated ? 'valid' : 'unknown',
+          isAuthenticated: options?.validated ? true : get().isAuthenticated,
           error: null,
         });
       },
 
-      // Conversations
+      refreshDecryptedCookies: () => {
+        const { encryptedCookies } = get();
+        if (!encryptedCookies) {
+          set({ cookies: null, isAuthenticated: false, cookieStatus: null });
+          return;
+        }
+
+        const decrypted = decryptCookieString(encryptedCookies);
+        if (!decrypted) {
+          set({
+            cookies: null,
+            encryptedCookies: null,
+            isAuthenticated: false,
+            cookieStatus: 'invalid',
+          });
+        } else {
+          set({ cookies: decrypted });
+        }
+      },
+
+      setCookieStatus: (status: CookieStatus) => {
+        set((state) => ({
+          cookieStatus: status,
+          isAuthenticated:
+            status === 'valid'
+              ? true
+              : status === 'unknown'
+              ? state.isAuthenticated
+              : status === null
+              ? false
+              : false,
+        }));
+      },
+
+      markCookiesValidated: () => {
+        const nowIso = new Date().toISOString();
+        set((state) => ({
+          cookieStatus: 'valid',
+          isAuthenticated: true,
+          lastValidatedAt: nowIso,
+          cookiesSetAt: state.cookiesSetAt ?? nowIso,
+        }));
+      },
+
+      shouldRefreshCookies: () => {
+        const state = get();
+        const referenceTimestamp = state.lastValidatedAt || state.cookiesSetAt;
+        return areCookiesStale(referenceTimestamp);
+      },
+
+      logout: () => {
+        set({
+          cookies: null,
+          encryptedCookies: null,
+          cookiesSetAt: null,
+          lastValidatedAt: null,
+          cookieStatus: null,
+          isAuthenticated: false,
+          currentConversationId: null,
+        });
+      },
+
       createConversation: () => {
         const id = `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const now = new Date();
         const newConversation: Conversation = {
           id,
           title: 'New Chat',
           messages: [],
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: now,
+          updatedAt: now,
         };
-        
+
         set((state) => ({
           conversations: [newConversation, ...state.conversations],
           currentConversationId: id,
           error: null,
         }));
-        
+
         return id;
       },
 
@@ -85,21 +192,22 @@ export const useChatStore = create<ChatStore>()(
         };
 
         set((state) => {
-          const conversations = state.conversations.map((conv) => {
-            if (conv.id === conversationId) {
-              const updatedMessages = [...conv.messages, message];
-              const title = conv.title === 'New Chat' && message.role === 'user' 
-                ? message.content.slice(0, 30) + (message.content.length > 30 ? '...' : '')
-                : conv.title;
-              
-              return {
-                ...conv,
-                messages: updatedMessages,
-                title,
-                updatedAt: new Date(),
-              };
+          const conversations = state.conversations.map((conversation) => {
+            if (conversation.id !== conversationId) {
+              return conversation;
             }
-            return conv;
+
+            const updatedMessages = [...conversation.messages, message];
+            const title = conversation.title === 'New Chat' && message.role === 'user'
+              ? message.content.slice(0, 30) + (message.content.length > 30 ? '...' : '')
+              : conversation.title;
+
+            return {
+              ...conversation,
+              messages: updatedMessages,
+              title,
+              updatedAt: new Date(),
+            };
           });
 
           return { conversations };
@@ -108,57 +216,61 @@ export const useChatStore = create<ChatStore>()(
 
       updateMessage: (conversationId: string, messageId: string, updates: Partial<Message>) => {
         set((state) => ({
-          conversations: state.conversations.map((conv) => {
-            if (conv.id === conversationId) {
-              return {
-                ...conv,
-                messages: conv.messages.map((msg) =>
-                  msg.id === messageId ? { ...msg, ...updates } : msg
-                ),
-                updatedAt: new Date(),
-              };
+          conversations: state.conversations.map((conversation) => {
+            if (conversation.id !== conversationId) {
+              return conversation;
             }
-            return conv;
+
+            return {
+              ...conversation,
+              messages: conversation.messages.map((message) =>
+                message.id === messageId ? { ...message, ...updates } : message
+              ),
+              updatedAt: new Date(),
+            };
           }),
         }));
       },
 
       deleteConversation: (id: string) => {
         set((state) => {
-          const newConversations = state.conversations.filter((conv) => conv.id !== id);
-          const newCurrentId = state.currentConversationId === id 
-            ? (newConversations.length > 0 ? newConversations[0].id : null)
+          const remaining = state.conversations.filter((conversation) => conversation.id !== id);
+          const currentId = state.currentConversationId === id
+            ? remaining[0]?.id ?? null
             : state.currentConversationId;
-          
+
           return {
-            conversations: newConversations,
-            currentConversationId: newCurrentId,
+            conversations: remaining,
+            currentConversationId: currentId,
           };
         });
       },
 
       updateConversationTitle: (id: string, title: string) => {
         set((state) => ({
-          conversations: state.conversations.map((conv) =>
-            conv.id === id ? { ...conv, title, updatedAt: new Date() } : conv
+          conversations: state.conversations.map((conversation) =>
+            conversation.id === id
+              ? { ...conversation, title, updatedAt: new Date() }
+              : conversation
           ),
         }));
       },
 
-      // UI State
       setLoading: (loading: boolean) => set({ isLoading: loading }),
+
       setError: (error: string | null) => set({ error }),
+
+      clearError: () => set({ error: null }),
 
       setTheme: (theme: 'dark' | 'light') => set({ theme }),
 
-      // Reminders
       addReminder: (reminderData: Omit<Reminder, 'id' | 'createdAt'>) => {
         const reminder: Reminder = {
           ...reminderData,
           id: `reminder_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           createdAt: new Date(),
         };
-        
+
         set((state) => ({
           reminders: [...state.reminders, reminder],
         }));
@@ -181,13 +293,50 @@ export const useChatStore = create<ChatStore>()(
     {
       name: 'gemini-chat-storage',
       partialize: (state) => ({
-        apiKey: state.apiKey,
+        encryptedCookies: state.encryptedCookies,
+        cookiesSetAt: state.cookiesSetAt,
+        lastValidatedAt: state.lastValidatedAt,
+        cookieStatus: state.cookieStatus,
         isAuthenticated: state.isAuthenticated,
-        conversations: state.conversations,
         currentConversationId: state.currentConversationId,
+        conversations: state.conversations,
         reminders: state.reminders,
         theme: state.theme,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+
+        if (state.encryptedCookies) {
+          const decrypted = decryptCookieString(state.encryptedCookies);
+          if (decrypted) {
+            state.cookies = decrypted;
+            if (!state.cookieStatus) {
+              state.cookieStatus = 'unknown';
+            }
+          } else {
+            state.cookies = null;
+            state.encryptedCookies = null;
+            state.cookieStatus = 'invalid';
+            state.isAuthenticated = false;
+          }
+        }
+
+        if (Array.isArray(state.conversations) && state.conversations.length > 0) {
+          state.conversations = normalizeConversationDates(state.conversations);
+        }
+
+        if (Array.isArray(state.reminders) && state.reminders.length > 0) {
+          state.reminders = normalizeReminderDates(state.reminders);
+        }
+
+        if (state.cookieStatus === 'valid') {
+          const referenceTimestamp = state.lastValidatedAt || state.cookiesSetAt;
+          if (areCookiesStale(referenceTimestamp)) {
+            state.cookieStatus = 'expired';
+            state.isAuthenticated = false;
+          }
+        }
+      },
     }
   )
 );

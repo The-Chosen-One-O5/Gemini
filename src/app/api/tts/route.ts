@@ -1,58 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { TTSRequest, TTSResponse } from '@/types';
+import { sendGeminiTTSRequest, CookieValidationError } from '@/server/geminiClient';
 
 export async function POST(request: NextRequest) {
   try {
-    const body: TTSRequest = await request.json();
-    const { text } = body;
+    const body = (await request.json()) as TTSRequest;
+    const { text, cookies } = body;
 
     if (!text || typeof text !== 'string') {
       return NextResponse.json(
-        { error: 'Text is required and must be a string' },
+        { error: 'Text is required and must be a string', success: false },
         { status: 400 }
       );
     }
 
-    // Get API key from request headers
-    const apiKey = request.headers.get('x-api-key');
-    if (!apiKey) {
+    if (!cookies || typeof cookies !== 'string') {
       return NextResponse.json(
-        { error: 'API key is required' },
+        { error: 'Cookies are required to authenticate with Gemini', success: false },
         { status: 401 }
       );
     }
 
-    // Initialize Gemini
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const tts = await sendGeminiTTSRequest(cookies, text);
 
-    // Generate audio using Gemini's capabilities
-    const prompt = `Generate audio for the following text: "${text}". Return the audio data that can be played as speech.`;
-    
-    await model.generateContent(prompt);
-    
-    // Note: Gemini 2.0 doesn't have native TTS yet, so we'll return a simulated response
-    // In a real implementation, you would use Google Cloud Text-to-Speech API
-    const ttsResponse: TTSResponse = {
-      error: 'TTS feature is currently under development. Please check back later.',
+    if (!tts.audioBase64 || !tts.mimeType) {
+      const response: TTSResponse = {
+        success: false,
+        error: 'Gemini did not return audio data. Please try again later.',
+      };
+      return NextResponse.json(response, { status: 502 });
+    }
+
+    const audioUrl = `data:${tts.mimeType};base64,${tts.audioBase64}`;
+
+    const response: TTSResponse = {
+      success: true,
+      audioUrl,
     };
 
-    return NextResponse.json(ttsResponse);
+    return NextResponse.json(response);
   } catch (error) {
-    console.error('TTS API error:', error);
-    
-    if (error instanceof Error) {
-      if (error.message.includes('API_KEY_INVALID')) {
-        return NextResponse.json(
-          { error: 'Invalid API key. Please check your Google AI Studio API key.' },
-          { status: 401 }
-        );
-      }
+    console.error('TTS API error:', error instanceof Error ? error.message : error);
+
+    if (error instanceof CookieValidationError) {
+      return NextResponse.json(
+        { error: error.message, success: false },
+        { status: 401 }
+      );
+    }
+
+    if (error instanceof Error && error.message.includes('Too many requests')) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.', success: false },
+        { status: 429 }
+      );
     }
 
     return NextResponse.json(
-      { error: 'Failed to generate audio. Please try again.' },
+      { error: 'Failed to generate audio. Please try again.', success: false },
       { status: 500 }
     );
   }
